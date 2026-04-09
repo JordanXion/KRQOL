@@ -31,7 +31,7 @@ This mod does not provide any cheat functionality and only presses UI elements f
 
 ## Configuration
 
-Settings are available in `BepInEx/config/KRQOL.cfg` after first launch, or via [BepInExConfigManager](https://github.com/sinai-dev/BepInExConfigManager) ([Download](https://github.com/sinai-dev/BepInExConfigManager/releases/latest/download/BepInExConfigManager.Mono.zip))
+Settings are available in `BepInEx/config/KRQOL.cfg` after first launch, or via [BepInExConfigManager](https://github.com/BepInEx/BepInEx.ConfigurationManager)
 
 | Setting | Default | Description |
 |---|---|---|
@@ -52,4 +52,4 @@ Settings are available in `BepInEx/config/KRQOL.cfg` after first launch, or via 
 
 ## Development
 
-- Create `LocalPaths.props` and point to game install directory. Reference `LocalPahts.props.example`.
+- Create `LocalPaths.props` and point to game install directory. Reference `LocalPaths.props.example`.
