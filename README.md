@@ -33,18 +33,6 @@ This mod does not provide any cheat functionality and only presses UI elements f
 
 Settings are available in `BepInEx/config/KRQOL.cfg` after first launch, or via [BepInExConfigManager](https://github.com/BepInEx/BepInEx.ConfigurationManager)
 
-| Setting | Default | Description |
-|---|---|---|
-| AutoLogin | true | Automatically skip the login touch screen |
-| AutoSkipCutscene | true | Automatically skip cutscenes |
-| CutsceneBailoutTime | 10 | Seconds to wait before giving up on skipping a cutscene (1-60) |
-| AutoSkipVictoryScreen | true | Automatically skip end of battle victory screens |
-| AutoSkipRewards | true | Automatically close reward popups after battles |
-| AutoNextBattle | true | Automatically click the next battle button on end of battle screens |
-| AutoClaimRewards | true | Automatically claim all available rewards on quest and achievement screens. Excludes the Etc. quest category |
-| AutoReceiveMail | true | Automatically receive all mail when the mail popup opens |
-| DebugLogging | false | Log verbose debug information |
-
 ## Notes
 
 - Developed during CBT — expect updates as the game changes
