@@ -10,6 +10,7 @@ using NGame2.NUI.NWindow.NCutScene;
 using NVespa.NSingleton;
 using System;
 using System.Collections;
+using System.Reflection;
 using UnityEngine;
 
 namespace KRQOL
@@ -21,7 +22,7 @@ namespace KRQOL
 
         internal static ConfigEntry<bool> AutoLogin;
         internal static ConfigEntry<bool> AutoSkipCutscene;
-        internal static ConfigEntry<float> AutoSkipCutsceneBailoutTime;
+        //internal static ConfigEntry<float> AutoSkipCutsceneBailoutTime;
         internal static ConfigEntry<bool> AutoSkipVictoryScreen;
         internal static ConfigEntry<bool> AutoSkipRewards;
         internal static ConfigEntry<bool> AutoNextBattle;
@@ -37,7 +38,7 @@ namespace KRQOL
 
             AutoLogin = Config.Bind("General", "AutoLogin", true, "Automatically skips the tap to login screen");
             AutoSkipCutscene = Config.Bind("General", "AutoSkipCutscene", true, "Automatically skip cutscenes");
-            AutoSkipCutsceneBailoutTime = Config.Bind("General", "AutoSkipCutsceneBailoutTime", 10f, new ConfigDescription("How long to wait before giving up on skipping a cutscene (seconds)", new AcceptableValueRange<float>(1f, 60f)));
+            //AutoSkipCutsceneBailoutTime = Config.Bind("General", "AutoSkipCutsceneBailoutTime", 10f, new ConfigDescription("How long to wait before giving up on skipping a cutscene (seconds)", new AcceptableValueRange<float>(1f, 60f)));
             AutoSkipVictoryScreen = Config.Bind("General", "AutoSkipVictoryScreen", true, "Automatically skips end of battle victory screens");
             AutoSkipRewards = Config.Bind("General", "AutoSkipRewards", true, "Automatically closes reward popups");
             AutoNextBattle = Config.Bind("General", "AutoNextBattle", true, "Automatically clicks the next battle button on end of battle screens");
@@ -78,43 +79,21 @@ namespace KRQOL
 
 
     [HarmonyPatch(typeof(CutSceneMenu), "ShowSkipButton")]
+    [HarmonyPatch(typeof(CutSceneMenu), "OpenWindow")]
     static class PatchSkipCutscene
     {
-        static bool _isRunningSkip = false;
-        static void Postfix(CutSceneMenu __instance, bool isShow)
+        static void Postfix(CutSceneMenu __instance, MethodBase __originalMethod)
         {
             if (!Plugin.AutoSkipCutscene.Value) return;
-
-            Plugin.DebugLog($"Cutscene detected - attempting to skip");
-            Plugin.DebugLog($"Cutscene isShow = {isShow}");
-            Plugin.DebugLog($"CutsceneManager valid = {SceneAutoBehaviour<CutSceneManager>.isValidInstance}");
-            Plugin.DebugLog($"CutsceneManager isPlaying = {SceneAutoBehaviour<CutSceneManager>.isValidInstance && SceneAutoBehaviour<CutSceneManager>.instance.IsPlaying}");
-            //if (!isShow) return;
-
-            if (_isRunningSkip) return;
-            __instance.StartCoroutine(WaitAndSkip());
+            Plugin.DebugLog($"Auto skipping cutscene ({__originalMethod.Name}).");
+            __instance.StartCoroutine(WaitAndSkip(__instance));
         }
 
-        static IEnumerator WaitAndSkip()
+        static IEnumerator WaitAndSkip(CutSceneMenu __instance)
         {
-            _isRunningSkip = true;
-            float elapsed = 0f;
-            while (!SceneAutoBehaviour<CutSceneManager>.isValidInstance ||
-                   !SceneAutoBehaviour<CutSceneManager>.instance.IsPlaying)
-            {
-                Plugin.DebugLog($"Waiting... elapsed={elapsed:F1}s valid={SceneAutoBehaviour<CutSceneManager>.isValidInstance} playing={SceneAutoBehaviour<CutSceneManager>.isValidInstance && SceneAutoBehaviour<CutSceneManager>.instance.IsPlaying}");
-                elapsed += 0.1f;
-                if (elapsed >= Plugin.AutoSkipCutsceneBailoutTime.Value)
-                {
-                    Plugin.DebugLog("Cutscene skip timed out.");
-                    _isRunningSkip = false;
-                    yield break;
-                }
-                yield return new WaitForSeconds(0.1f);
-            }
-            Plugin.DebugLog("Cutscene skipped.");
-            SceneAutoBehaviour<CutSceneManager>.instance.Skip();
-            _isRunningSkip = false;
+            Plugin.DebugLog("Auto skipping cutscene (ShowSkipButton)");
+            yield return new WaitForSeconds(1.0f);
+            __instance.OnClickSkip();
         }
     }
 
