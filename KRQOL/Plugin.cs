@@ -1,17 +1,7 @@
-﻿using BepInEx;
-using BepInEx.Configuration;
+using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
-using NGame2.NCutScene;
-using NGame2.NUI.NWindow;
-using NGame2.NUI.NWindow.Mission;
-using NGame2.NUI.NWindow.NBattle;
-using NGame2.NUI.NWindow.NCutScene;
-using NVespa.NSingleton;
-using System;
-using System.Collections;
-using System.Reflection;
-using UnityEngine;
+using System.Collections.Generic;
 
 namespace KRQOL
 {
@@ -19,33 +9,24 @@ namespace KRQOL
     public class Plugin : BaseUnityPlugin
     {
         internal static new ManualLogSource Logger;
+        internal static RoutineClearCampaign _routineClearCampaign;
+        internal static string lastLog = "";
 
-        internal static ConfigEntry<bool> AutoLogin;
-        internal static ConfigEntry<bool> AutoSkipCutscene;
-        //internal static ConfigEntry<float> AutoSkipCutsceneBailoutTime;
-        internal static ConfigEntry<bool> AutoSkipVictoryScreen;
-        internal static ConfigEntry<bool> AutoSkipRewards;
-        internal static ConfigEntry<bool> AutoNextBattle;
-        internal static ConfigEntry<float> AutoNextBattleDelay;
-        internal static ConfigEntry<bool> AutoClaimRewards;
-        internal static ConfigEntry<bool> AutoReceiveMail;
-        internal static ConfigEntry<bool> DebugLogging;
+
+        private static PluginWindow _window;
+        private static readonly List<Routine> _routines = new List<Routine>();
 
 
         private void Awake()
         {
             Logger = base.Logger;
 
-            AutoLogin = Config.Bind("General", "AutoLogin", true, "Automatically skips the tap to login screen");
-            AutoSkipCutscene = Config.Bind("General", "AutoSkipCutscene", true, "Automatically skip cutscenes");
-            //AutoSkipCutsceneBailoutTime = Config.Bind("General", "AutoSkipCutsceneBailoutTime", 10f, new ConfigDescription("How long to wait before giving up on skipping a cutscene (seconds)", new AcceptableValueRange<float>(1f, 60f)));
-            AutoSkipVictoryScreen = Config.Bind("General", "AutoSkipVictoryScreen", true, "Automatically skips end of battle victory screens");
-            AutoSkipRewards = Config.Bind("General", "AutoSkipRewards", true, "Automatically closes reward popups");
-            AutoNextBattle = Config.Bind("General", "AutoNextBattle", true, "Automatically clicks the next battle button on end of battle screens");
-            AutoNextBattleDelay = Config.Bind("General", "AutoNextBattleDelay", 5.0f, new ConfigDescription("How long to wait before clicking next battle (seconds). Setting this too low may cause issues due to the rewards screen.", new AcceptableValueRange<float>(0f, 60f)));
-            AutoClaimRewards = Config.Bind("General", "AutoClaimRewards", true, "Automatically clicks claim all on quest/achievement screens. Excludes \"Etc.\" quest category.");
-            AutoReceiveMail = Config.Bind("General", "AutoReceiveMail", true, "Automatically clicks receive all on the mail screen");
-            DebugLogging = Config.Bind("General", "DebugLogging", false, "Log verbose debug information");
+            Settings.Setup(Config);
+
+            _routineClearCampaign = new RoutineClearCampaign(this);
+            _routines.Add(_routineClearCampaign);
+
+            _window = new PluginWindow(_routines, Settings.ShowWindowAtStart.Value);
 
             Logger.LogInfo($"Plugin {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION} is loaded!");
 
@@ -57,230 +38,24 @@ namespace KRQOL
             }
         }
 
+        private void Update()
+        {
+            foreach (var routine in _routines)
+                routine.Update();
+
+            _window.Update();
+        }
+
+        private void OnGUI()
+        {
+            _window.OnGUI();
+        }
+
         internal static void DebugLog(object data)
         {
-            if (!DebugLogging.Value) return;
+            if (!Settings.DebugLogging.Value) return;
             Logger.LogInfo(data);
-        }
-    }
-
-
-    [HarmonyPatch(typeof(LoginTouchWait), "Init")]
-    static class PatchSkipLoginScreen
-    {
-        static void Postfix(Action onTouch)
-        {
-            if (!Plugin.AutoLogin.Value) return;
-
-            Plugin.DebugLog($"Login screen detected - attempting to login");
-            onTouch?.Invoke();
-        }
-    }
-
-
-    [HarmonyPatch(typeof(CutSceneMenu), "ShowSkipButton")]
-    [HarmonyPatch(typeof(CutSceneMenu), "OpenWindow")]
-    static class PatchSkipCutscene
-    {
-        static void Postfix(CutSceneMenu __instance, MethodBase __originalMethod)
-        {
-            if (!Plugin.AutoSkipCutscene.Value) return;
-            Plugin.DebugLog($"Auto skipping cutscene ({__originalMethod.Name}).");
-            __instance.StartCoroutine(WaitAndSkip(__instance));
-        }
-
-        static IEnumerator WaitAndSkip(CutSceneMenu __instance)
-        {
-            Plugin.DebugLog("Auto skipping cutscene (ShowSkipButton)");
-            yield return new WaitForSeconds(1.0f);
-            __instance.OnClickSkip();
-        }
-    }
-
-
-    [HarmonyPatch(typeof(EndBattleWin), "Init")]
-    static class PatchSkipVictoryScreen
-    {
-        static void Postfix(EndBattleWin __instance)
-        {
-            if (!Plugin.AutoSkipVictoryScreen.Value) return;
-
-            Plugin.DebugLog($"Victory screen detected - attempting to skip");
-            __instance.StartCoroutine(WaitAndTouch(__instance));
-        }
-
-        static IEnumerator WaitAndTouch(EndBattleWin win)
-        {
-            float delay = win.InputDisabledTimeMs / 1000f + 0.1f;
-            Plugin.DebugLog($"Waiting for input to be enabled ({delay}s)");
-            yield return new WaitForSeconds(delay);
-            Plugin.DebugLog($"Win screen valid = {win != null}");
-            if (win == null) yield break;
-            win.OnTouchScreen();
-            Plugin.DebugLog("Victory screen skipped.");
-        }
-    }
-
-
-    [HarmonyPatch(typeof(BaseRewardPopup), "OpenWithData")]
-    static class PatchAutoCloseReward
-    {
-        static void Postfix(BaseRewardPopup __instance, bool __result)
-        {
-            if (!Plugin.AutoSkipRewards.Value) return;
-
-            Plugin.DebugLog($"Reward popup detected - attempting to close");
-            Plugin.DebugLog($"Popup open result = {__result}");
-
-            if (!__result) return;
-            __instance.StartCoroutine(WaitAndClose(__instance));
-        }
-
-        static IEnumerator WaitAndClose(BaseRewardPopup popup)
-        {
-            Plugin.DebugLog($"Attempting to close reward popup after input disabled time ({popup.InputDisabledTime}s)");
-            yield return new WaitForSeconds(popup.InputDisabledTime + 0.1f);
-            if (popup == null) yield break;
-            popup.OnClickBackground();
-
-            // animations may still be playing, call again after SkippableTime
-            Plugin.DebugLog($"Attempting to close reward popup after skippable time ({popup.SkippableTime}s)");
-            yield return new WaitForSeconds(popup.SkippableTime + 0.1f);
-            if (popup == null) yield break;
-            popup.OnClickBackground();
-        }
-    }
-
-
-    [HarmonyPatch(typeof(EndBattleReward), "Init")]
-    static class PatchAutoNextBattle
-    {
-        static void Postfix(EndBattleReward __instance)
-        {
-            if (!Plugin.AutoNextBattle.Value) return;
-
-            Plugin.DebugLog("EndBattleReward opened - waiting for buttons");
-
-            if (AutoRepeatBattle.IsEnabled() || AutoNextBattle.IsEnabled())
-            {
-                Plugin.DebugLog($"In-game continuous battle is enabled, skipping auto next battle. AutoRepeatBattle={AutoRepeatBattle.IsEnabled()} AutoNextBattle={AutoNextBattle.IsEnabled()}");
-                return;
-            }
-
-            Plugin.DebugLog("Attempting to press next dungeon button");
-            __instance.StartCoroutine(WaitAndNextDungeon(__instance));
-        }
-
-        static IEnumerator WaitAndNextDungeon(EndBattleReward reward)
-        {
-            if (reward == null)
-            {
-                Plugin.DebugLog("Reward is null, skipping.");
-                yield break;
-            }
-            yield return new WaitForSeconds(reward.ButtonDelay + 0.1f);
-
-            if (reward.Button_NextDungeon == null || !reward.Button_NextDungeon.isEnabled)
-            {
-                Plugin.DebugLog("Next dungeon button not available, skipping.");
-                yield break;
-            }
-
-            Plugin.DebugLog("Auto clicking next dungeon.");
-            yield return new WaitForSeconds(Plugin.AutoNextBattleDelay.Value);
-            reward.OnClickNextDungeon();
-        }
-    }
-
-
-    [HarmonyPatch(typeof(QuestList), "RefreshList")]
-    static class PatchAutoClaimQuests
-    {
-        static void Postfix(QuestList __instance)
-        {
-            if (!Plugin.AutoClaimRewards.Value) return;
-
-            var selectedMainCategory = (int)AccessTools.Property(typeof(QuestList), "SelectedMainCategory").GetValue(__instance);
-            Plugin.DebugLog($"QuestList refreshed - SelectedMainCategory = {selectedMainCategory}");
-            if (selectedMainCategory == 9)
-            {
-                Plugin.DebugLog("Etc. category selected, skipping auto claim to avoid potential infinite loop.");
-                return;
-            }
-
-            if (__instance.GetAllRewardButton != null && __instance.GetAllRewardButton.isEnabled)
-            {
-                Plugin.DebugLog("Auto clicking claim all.");
-                __instance.OnClickAllGet();
-            }
-
-            if (__instance.QuestRewardUI != null &&
-                __instance.QuestRewardUI.Button_Reward != null &&
-                __instance.QuestRewardUI.Button_Reward.isEnabled)
-            {
-                Plugin.DebugLog("Auto clicking claim reward.");
-                __instance.OnClickReward();
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(HeroAchievementList), "SetupHeroAchievementList")]
-    static class PatchAutoClaimHeroAchievements
-    {
-        static void Postfix(HeroAchievementList __instance)
-        {
-            if (!Plugin.AutoClaimRewards.Value) return;
-
-            Plugin.DebugLog($"HeroAchievementList refreshed - checking for claimable rewards");
-            Plugin.DebugLog($"Button_AllGet null = {__instance.Button_AllGet == null}");
-
-            if (__instance.Button_AllGet == null) return;
-
-            Plugin.DebugLog($"Button_AllGet enabled = {__instance.Button_AllGet.isEnabled}");
-
-            if (!__instance.Button_AllGet.isEnabled) return;
-
-            Plugin.DebugLog("Auto claiming hero achievement rewards.");
-            __instance.OnClickGetAllReward();
-        }
-    }
-
-
-    [HarmonyPatch(typeof(MissionNodeWindowTopView2), "SetGetAllRewardButton")]
-    static class PatchAutoClaimMissionNodeRewards
-    {
-        static void Postfix(MissionNodeWindowTopView2 __instance, bool allGet)
-        {
-            if (!Plugin.AutoClaimRewards.Value) return;
-
-            Plugin.DebugLog($"MissionNodeWindowTopView2 SetGetAllRewardButton called");
-            Plugin.DebugLog($"allGet = {allGet}");
-
-            if (!allGet) return;
-
-            Plugin.DebugLog("Auto claiming mission node rewards.");
-            __instance.OnClickGetAllReward();
-        }
-    }
-
-    [HarmonyPatch(typeof(MailListPopup), "UpdateButtonState")]
-    static class PatchAutoReceiveMail
-    {
-        static void Postfix(MailListPopup __instance)
-        {
-            if (!Plugin.AutoReceiveMail.Value) return;
-
-            Plugin.DebugLog($"MailListPopup UpdateButtonState called");
-            Plugin.DebugLog($"ReceiveAllButton null = {__instance.ReceiveAllButton == null}");
-
-            if (__instance.ReceiveAllButton == null) return;
-
-            Plugin.DebugLog($"ReceiveAllButton enabled = {__instance.ReceiveAllButton.isEnabled}");
-
-            if (!__instance.ReceiveAllButton.isEnabled) return;
-
-            Plugin.DebugLog("Auto receiving all mail.");
-            __instance.OnClickReceiveAllMail();
+            lastLog = data.ToString();
         }
     }
 }
