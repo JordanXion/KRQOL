@@ -21,10 +21,11 @@ namespace KRQOL
 
         internal static ConfigEntry<bool> AutoLogin;
         internal static ConfigEntry<bool> AutoSkipCutscene;
-        internal static ConfigEntry<float> CutsceneBailoutTime;
+        internal static ConfigEntry<float> AutoSkipCutsceneBailoutTime;
         internal static ConfigEntry<bool> AutoSkipVictoryScreen;
         internal static ConfigEntry<bool> AutoSkipRewards;
         internal static ConfigEntry<bool> AutoNextBattle;
+        internal static ConfigEntry<float> AutoNextBattleDelay;
         internal static ConfigEntry<bool> AutoClaimRewards;
         internal static ConfigEntry<bool> AutoReceiveMail;
         internal static ConfigEntry<bool> DebugLogging;
@@ -36,10 +37,11 @@ namespace KRQOL
 
             AutoLogin = Config.Bind("General", "AutoLogin", true, "Automatically skips the tap to login screen");
             AutoSkipCutscene = Config.Bind("General", "AutoSkipCutscene", true, "Automatically skip cutscenes");
-            CutsceneBailoutTime = Config.Bind("General", "CutsceneBailoutTime", 10f, new ConfigDescription("How long to wait before giving up on skipping a cutscene (seconds)", new AcceptableValueRange<float>(1f, 60f)));
+            AutoSkipCutsceneBailoutTime = Config.Bind("General", "AutoSkipCutsceneBailoutTime", 10f, new ConfigDescription("How long to wait before giving up on skipping a cutscene (seconds)", new AcceptableValueRange<float>(1f, 60f)));
             AutoSkipVictoryScreen = Config.Bind("General", "AutoSkipVictoryScreen", true, "Automatically skips end of battle victory screens");
             AutoSkipRewards = Config.Bind("General", "AutoSkipRewards", true, "Automatically closes reward popups");
             AutoNextBattle = Config.Bind("General", "AutoNextBattle", true, "Automatically clicks the next battle button on end of battle screens");
+            AutoNextBattleDelay = Config.Bind("General", "AutoNextBattleDelay", 5.0f, new ConfigDescription("How long to wait before clicking next battle (seconds). Setting this too low may cause issues due to the rewards screen.", new AcceptableValueRange<float>(0f, 60f)));
             AutoClaimRewards = Config.Bind("General", "AutoClaimRewards", true, "Automatically clicks claim all on quest/achievement screens. Excludes \"Etc.\" quest category.");
             AutoReceiveMail = Config.Bind("General", "AutoReceiveMail", true, "Automatically clicks receive all on the mail screen");
             DebugLogging = Config.Bind("General", "DebugLogging", false, "Log verbose debug information");
@@ -102,7 +104,7 @@ namespace KRQOL
             {
                 Plugin.DebugLog($"Waiting... elapsed={elapsed:F1}s valid={SceneAutoBehaviour<CutSceneManager>.isValidInstance} playing={SceneAutoBehaviour<CutSceneManager>.isValidInstance && SceneAutoBehaviour<CutSceneManager>.instance.IsPlaying}");
                 elapsed += 0.1f;
-                if (elapsed >= Plugin.CutsceneBailoutTime.Value)
+                if (elapsed >= Plugin.AutoSkipCutsceneBailoutTime.Value)
                 {
                     Plugin.DebugLog("Cutscene skip timed out.");
                     _isRunningSkip = false;
@@ -159,14 +161,12 @@ namespace KRQOL
         {
             Plugin.DebugLog($"Attempting to close reward popup after input disabled time ({popup.InputDisabledTime}s)");
             yield return new WaitForSeconds(popup.InputDisabledTime + 0.1f);
-            Plugin.DebugLog($"Popup valid check 1 = {popup != null}");
             if (popup == null) yield break;
             popup.OnClickBackground();
 
             // animations may still be playing, call again after SkippableTime
             Plugin.DebugLog($"Attempting to close reward popup after skippable time ({popup.SkippableTime}s)");
             yield return new WaitForSeconds(popup.SkippableTime + 0.1f);
-            Plugin.DebugLog($"Popup valid check 2 = {popup != null}");
             if (popup == null) yield break;
             popup.OnClickBackground();
         }
@@ -180,20 +180,26 @@ namespace KRQOL
         {
             if (!Plugin.AutoNextBattle.Value) return;
 
+            Plugin.DebugLog("EndBattleReward opened - waiting for buttons");
+
             if (AutoRepeatBattle.IsEnabled() || AutoNextBattle.IsEnabled())
             {
                 Plugin.DebugLog($"In-game continuous battle is enabled, skipping auto next battle. AutoRepeatBattle={AutoRepeatBattle.IsEnabled()} AutoNextBattle={AutoNextBattle.IsEnabled()}");
                 return;
             }
 
-            Plugin.DebugLog("EndBattleReward opened - waiting for buttons");
+            Plugin.DebugLog("Attempting to press next dungeon button");
             __instance.StartCoroutine(WaitAndNextDungeon(__instance));
         }
 
         static IEnumerator WaitAndNextDungeon(EndBattleReward reward)
         {
+            if (reward == null)
+            {
+                Plugin.DebugLog("Reward is null, skipping.");
+                yield break;
+            }
             yield return new WaitForSeconds(reward.ButtonDelay + 0.1f);
-            if (reward == null) yield break;
 
             if (reward.Button_NextDungeon == null || !reward.Button_NextDungeon.isEnabled)
             {
@@ -202,6 +208,7 @@ namespace KRQOL
             }
 
             Plugin.DebugLog("Auto clicking next dungeon.");
+            yield return new WaitForSeconds(Plugin.AutoNextBattleDelay.Value);
             reward.OnClickNextDungeon();
         }
     }
